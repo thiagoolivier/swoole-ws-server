@@ -2,8 +2,7 @@
 
 namespace Src\Utils;
 use finfo;
-use JsonSchema\Validator;
-use JsonSchema\Constraints\Constraint;
+use JsonSchema\Validator as JsonSchemaValidator;
 
 class MessageValidation
 {
@@ -17,31 +16,33 @@ class MessageValidation
 
     /**
      * Validate a message to be sent through the WebSocket
-     * @param string $message Message to be validated. Expected to be a JSON string.
+     * @param string $message message to be validated. Expected to be a JSON string.
      * @throws \Exception if the message is invalid
-     * @return void
+     * @return string the validated message
      */
-    public function validate($message): void
+    public function validate($message): string
     {  
         self::validateAgainstSchema($message);
         self::validateBasedOnType($message);
-    }    
+
+        return $message;
+    }
 
     private static function validateAgainstSchema(string $data): void
     {
         $data = json_decode($data);
 
-        $validator = new Validator;
+        $validator = new JsonSchemaValidator;
         $validator->validate($data, self::$messageSchema);
 
         if (! $validator->isValid()) {
-            $message = '';
+            $errorMessage = '[JSON-SCHEMA] ';
             
             foreach ($validator->getErrors() as $error) {
-                $message .= $error['message'] . ' | ';
+                $errorMessage .= $error['message'];
             }
 
-            throw new \Exception($message);
+            throw new \Exception($errorMessage);
         }
     }
 

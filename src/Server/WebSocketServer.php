@@ -19,55 +19,67 @@ class WebSocketServer
         $this->setConfig();
 
         $this->server->on('start', function (Server $server) {
-            echo "Server started at host {$server->host} and port {$server->port}\n";
+            echo "Server running at host {$server->host} and port {$server->port}\n";
         });
 
         $this->server->on('open', [$this, 'onOpen']);
         $this->server->on('message', [$this, 'onMessage']);
-
-        $this->server->on('close', function (Server $server, $fd) {
-            echo "FD {$fd} connection closed.\n";
-        });
+        $this->server->on('close', [$this, 'onClose']);
     }
 
     public function onOpen (Server $server, Request $request) 
     {
-        $decoded = JWTUtils::validateToken($request);
-
-        if (!$decoded) {
+        try {
+            $decoded = JWTUtils::validateToken($request);
+            
+            if (! $decoded) {
+                $server->close($request->fd);
+                throw new \Exception("[JWT-UNAUTHORIZED] Connection: IP {$request->server['remote_addr']}");
+            } else {
+                echo "FD {$request->fd} connection established.\n";
+                Log::info("[CONN STABLISHED] IP: {$request->server['remote_addr']}");
+            }
+        } catch (\Exception $e) {
+            Log::error("[CONN FAILED] " . $e->getMessage());
             $server->close($request->fd);
-        } else {
-            echo "FD {$request->fd} connection stablished.\n";
         }
     }
 
     public function onMessage(Server $server, $frame) {
         $validator = new MessageValidation();
+        $senderData = $server->connection_info($frame->fd);
 
         try {
-            $validator->validate($frame->data);
-        } catch (\Throwable $th) {
-            $remote_addr = $server->connection_info($frame->fd)['remote_addr'];
-            $remote_port = $server->connection_info($frame->fd)['remote_port'];
+            $validatedData = $validator->validate($frame->data);
+            $data = json_decode($validatedData, true);
             
-            Log::error(
-                "{$th->getMessage()} | " .
-                "Remote address: {$remote_addr} | " .
-                "Port: {$remote_port}"
+            Log::info(
+                "[MESSAGE IN] type: {$data['type']} " . 
+                "ip: {$senderData['remote_ip']} | " .
+                "port: {$senderData['remote_port']}"
             );
-        }
 
-        $data = json_decode($frame->data, true);
-
-        if ($data['type'] === 'message') {
-            
-        }
-        
-        foreach ($server->connections as $fd) {
-            if ($server->isEstablished($fd) && $fd !== $frame->fd) {
-                $server->push($fd, $frame->data);
+            foreach ($server->connections as $fd) {
+                if ($server->isEstablished($fd) && $fd !== $frame->fd) {
+                    $server->push($fd, $validatedData);
+                }
             }
+        } catch (\Throwable $e) {            
+            Log::error(
+                "{$e->getMessage()} | " .
+                "ip: {$senderData['remote_ip']} | " .
+                "port: {$senderData['remote_port']}"
+            );
+
+            $server->push($frame->fd, json_encode(['error' => $e->getMessage()]));
+            return;
         }
+    }
+
+    public function onClose(Server $server, int $fd): void
+    {
+        $senderData = $server->connection_info($fd);
+        Log::info("[CONN CLOSED] ip: {$senderData['remote_ip']} | port: {$senderData['remote_port']}");
     }
 
     public function start(): void

@@ -20,15 +20,6 @@ class JWTUtils
             JWT::decode($token, new Key($secret, 'HS256'));
             return true;
         } catch (Exception $e) {
-            $remote_addr = $request->server['remote_addr'] ?? '';
-            $remote_port = $request->server['remote_port'] ?? '';
-            $remote_uri = $request->server['request_uri'] ?? '';
-
-            Log::error(
-                "{$e->getMessage()} | ".
-                "Remote address: {$remote_addr} | ". 
-                "Port: {$remote_port}"
-            );
             return false;
         }
     }
