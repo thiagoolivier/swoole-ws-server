@@ -2,35 +2,67 @@
 
 namespace Src\Utils;
 
+use Monolog\Logger;
+use Monolog\Handler\StreamHandler;
+use Monolog\Formatter\LineFormatter;
+
 class Log
 {
-    public static function info(string $message): void
-    {
-        $config = require __DIR__ . '/../../config/swoole.php';
+    private static ?Logger $logger = null;
 
-        $logDir = $config['log_file'];
-        $date = date('Y-m-d H:i:s');
-        $log = "[{$date}] [INFO] {$message}\n";
-        file_put_contents($logDir, $log, FILE_APPEND);
+    private static function getLogger(): Logger
+    {
+        if (self::$logger === null) {
+            $config = require __DIR__ . '/../../config/swoole.php';
+
+            $logDir = $config['log_file'] ?? __DIR__ . '/../../logs/app.log';
+
+            $logger = new Logger('app');
+
+            $handler = new StreamHandler($logDir, Logger::DEBUG);
+            $formatter = new LineFormatter(null, null, true, true);
+            $handler->setFormatter($formatter);
+
+            $logger->pushHandler($handler);
+
+            self::$logger = $logger;
+        }
+
+        return self::$logger;
     }
 
-    public static function warning(string $message): void
+    public static function info(string $message, array $context = []): void
     {
-        $config = require __DIR__ . '/../../config/swoole.php';
-
-        $logDir = $config['log_file'];
-        $date = date('Y-m-d H:i:s');
-        $log = "[{$date}] [WARNING] {$message}\n";
-        file_put_contents($logDir, $log, FILE_APPEND);
+        self::getLogger()->info($message, $context);
     }
 
-    public static function error(string $message): void
+    public static function warning(string $message, array $context = []): void
     {
-        $config = require __DIR__ . '/../../config/swoole.php';
+        self::getLogger()->warning($message, $context);
+    }
 
-        $logDir = $config['log_file'];
-        $date = date('Y-m-d H:i:s');
-        $log = "[{$date}] [ERROR] {$message}\n";
-        file_put_contents($logDir, $log, FILE_APPEND);
+    public static function error(string $message, array $context = []): void
+    {
+        self::getLogger()->error($message, $context);
+    }
+
+    public static function debug(string $message, array $context = []): void
+    {
+        self::getLogger()->debug($message, $context);
+    }
+
+    public static function critical(string $message, array $context = []): void
+    {
+        self::getLogger()->critical($message, $context);
+    }
+
+    public static function alert(string $message, array $context = []): void
+    {
+        self::getLogger()->alert($message, $context);
+    }
+
+    public static function emergency(string $message, array $context = []): void
+    {
+        self::getLogger()->emergency($message, $context);
     }
 }
