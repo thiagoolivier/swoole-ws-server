@@ -15,12 +15,11 @@ Feel free to add extra features if you wish.
 ------------
 
 
-#### Instalation
+#### Instalation/Requirements
 - PHP ^8.0
 - Have php-swoole ^5.0 extension. Check the docs about installation: https://wiki.swoole.com/en/#/environment
 - Clone the project and run `composer install`
 - Configure your .env file
-- Create a log file in your prefered path
 
 ------------
 
