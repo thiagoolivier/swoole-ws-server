@@ -11,4 +11,5 @@ return [
     'heartbeat_check_interval' => 60,
     'log_file' => __DIR__ . $_ENV['SWOOLE_LOG_PATH'],
     'jwt_secret' => $_ENV['JWT_SECRET'] ?? '',
+    'app_id' => $_ENV['APP_ID'] ?? '',
 ];

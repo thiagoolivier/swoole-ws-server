@@ -39,6 +39,44 @@ class WebSocketServer
 
     public function onOpen (Server $server, Request $request) 
     {
+        $appId = $request->header['app-id'] ?? null;
+        $token = $request->header['token'] ?? null;
+
+        if (!isset($appId) || $appId !== $this->config['app_id']) {
+            $server->disconnect($request->fd, 4000, 'Invalid app id!');
+
+            Log::info("Invalid app id.", [
+                'ip' => $request->server['remote_addr'],
+                'port' => $request->server['remote_port']
+            ]);
+
+            return;
+        }
+
+        if (empty($token)) {
+            $server->disconnect($request->fd, 4001, 'Token not provided!');
+
+            Log::info("Token not provided.", [
+                'ip' => $request->server['remote_addr'],
+                'port' => $request->server['remote_port']
+            ]);
+
+            return;
+        }
+
+        try {
+            $this->validateToken($token);
+        } catch (\Throwable $e) {
+            $server->disconnect($request->fd, 4002, 'Invalid token!');
+
+            Log::info("Invalid token.", [
+                'ip' => $request->server['remote_addr'],
+                'port' => $request->server['remote_port']
+            ]);
+
+            return;
+        }
+
         Log::info("Connection established.", [
             'ip' => $request->server['remote_addr'],
             'port' => $request->server['remote_port']
@@ -57,22 +95,6 @@ class WebSocketServer
                 'ip' => $senderData['remote_ip'],
                 'port' => $senderData['remote_port']
             ]);
-
-            if ($data['type'] === 'auth') {
-                $validated = $this->validateToken($data['content']);
-
-                if (!isset($validated)) {
-                    $server->push($frame->fd, json_encode(['error' => 'Invalid token']));
-                    $server->disconnect($frame->fd, 4001, 'Invalid token!');
-
-                    Log::info("Invalid token.", [
-                        'ip' => $senderData['remote_ip'],
-                        'port' => $senderData['remote_port']
-                    ]);
-                } else {
-                    $server->push($frame->fd, json_encode(['message' => 'Authenticated']));
-                }
-            }
 
             foreach ($server->connections as $fd) {
                 if ($server->isEstablished($fd) && $fd !== $frame->fd) {
