@@ -8,7 +8,7 @@ Feel free to add extra features if you wish.
 
 #### Features
 - Authentication using firebase/JWT;
-- Decoupled configuration file;
+- Configuration file;
 - Env file support;
 - Basic message validation, which includes: JSON schema validation, mime types validation and some basic string validations.
 

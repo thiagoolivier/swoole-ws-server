@@ -4,7 +4,7 @@
   "properties": {
     "type": {
       "type": "string",
-      "enum": ["message", "image", "document", "notification"]
+      "enum": ["auth", "message", "image", "document", "notification"]
     },
     "content": {
       "type": "string"

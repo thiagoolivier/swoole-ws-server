@@ -4,8 +4,8 @@ namespace Src\Server;
 
 use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
-use Src\Utils\MessageValidation;
 use Src\Utils\Log;
+use Src\Utils\MessageValidator;
 use Swoole\Http\Request;
 use Swoole\WebSocket\Server;
 
@@ -13,51 +13,43 @@ class WebSocketServer
 {
     private Server $server;
     private array $config;
+    private MessageValidator $validator;
 
     public function __construct(string $host, int $port)
     {
         $this->server = new Server($host, $port);
         $this->setConfig();
+        $this->validator = new MessageValidator();
 
-        $this->server->on('start', function (Server $server) {
-            echo "Server running at host {$server->host} and port {$server->port}\n";
-        });
-
+        $this->server->on('start', [$this, 'onStart']);
         $this->server->on('open', [$this, 'onOpen']);
         $this->server->on('message', [$this, 'onMessage']);
         $this->server->on('close', [$this, 'onClose']);
     }
 
+    public function onStart(Server $server)
+    {
+        echo "Server started at {$server->host}:{$server->port}\n";
+
+        Log::info("Server started.", [
+            'host' => $server->host,
+            'port' => $server->port
+        ]);
+    }
+
     public function onOpen (Server $server, Request $request) 
     {
-        try {
-            $decoded = $this->validateToken($request);
-            
-            if (!$decoded) {
-                $server->close($request->fd);
-                throw new \Exception("Unauthorized.");
-            } else {
-                Log::info("Connection established.", [
-                    'ip' => $request->server['remote_addr'],
-                    'port' => $request->server['remote_port']
-                ]);
-            }
-        } catch (\Exception $e) {
-            Log::error($e->getMessage(), [
-                'ip' => $request->server['remote_addr'],
-                'port' => $request->server['remote_port']
-            ]);
-
-            $server->close($request->fd);
-        }
+        Log::info("Connection established.", [
+            'ip' => $request->server['remote_addr'],
+            'port' => $request->server['remote_port']
+        ]);
     }
 
     public function onMessage(Server $server, $frame) {
-        $validator = new MessageValidation();
         $senderData = $server->connection_info($frame->fd);
 
         try {
-            $validatedData = $validator->validate($frame->data);
+            $validatedData = $this->validator->validate($frame->data);
             $data = json_decode($validatedData, true);
 
             Log::info("Message received.", [
@@ -65,6 +57,22 @@ class WebSocketServer
                 'ip' => $senderData['remote_ip'],
                 'port' => $senderData['remote_port']
             ]);
+
+            if ($data['type'] === 'auth') {
+                $validated = $this->validateToken($data['content']);
+
+                if (!isset($validated)) {
+                    $server->push($frame->fd, json_encode(['error' => 'Invalid token']));
+                    $server->disconnect($frame->fd, 4001, 'Invalid token!');
+
+                    Log::info("Invalid token.", [
+                        'ip' => $senderData['remote_ip'],
+                        'port' => $senderData['remote_port']
+                    ]);
+                } else {
+                    $server->push($frame->fd, json_encode(['message' => 'Authenticated']));
+                }
+            }
 
             foreach ($server->connections as $fd) {
                 if ($server->isEstablished($fd) && $fd !== $frame->fd) {
@@ -74,7 +82,9 @@ class WebSocketServer
         } catch (\Throwable $e) {
             Log::error($e->getMessage(), [
                 'ip' => $senderData['remote_ip'],
-                'port' => $senderData['remote_port']
+                'port' => $senderData['remote_port'],
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
             ]);
 
             $server->push($frame->fd, json_encode(['error' => $e->getMessage()]));
@@ -117,13 +127,10 @@ class WebSocketServer
         ]);
     }
 
-    private function validateToken(Request $request): \stdClass
+    private function validateToken(string $jwt): \stdClass
     {
-        $config = require __DIR__ . '/../../config/swoole.php';
-        $secret = $config['jwt_secret'];
+        $secret = $this->config['jwt_secret'];
 
-        $token = $request->get['token'] ?? '';
-
-        return JWT::decode($token, new Key($secret, 'HS256'));
+        return JWT::decode($jwt, new Key($secret, 'HS256'));
     }
 }

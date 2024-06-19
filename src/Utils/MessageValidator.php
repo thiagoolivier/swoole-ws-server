@@ -4,7 +4,7 @@ namespace Src\Utils;
 use finfo;
 use JsonSchema\Validator as JsonSchemaValidator;
 
-class MessageValidation
+class MessageValidator
 {
     private static ?object $messageSchema = null;
     private static ?finfo $finfo = null;
@@ -64,6 +64,14 @@ class MessageValidation
 
         if (isset($decodedData['content'])) {
             switch ($decodedData['type']) {
+                case 'auth':
+                    if (strlen($decodedData['content']) > 384) {
+                        throw new \Exception('Auth token is too long');
+                    }
+
+                    $safe_token = htmlspecialchars($decodedData['content'], ENT_QUOTES, 'UTF-8');
+                    $decodedData['content'] = $safe_token;
+                    break;
                 case 'message':
                     if (strlen($decodedData['content']) > 65535) {
                         throw new \Exception('Message content is too long');
