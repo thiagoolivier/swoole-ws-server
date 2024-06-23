@@ -21,6 +21,9 @@
       },
       "required": ["id", "name"]
     },
+    "token": {
+      "type": "string"
+    },
     "timestamp": {
       "type": "string",
       "format": "date-time"
@@ -38,5 +41,5 @@
       "required": ["messageId", "roomId"]
     }
   },
-  "required": ["type", "content", "sender", "timestamp", "metadata"]
+  "required": ["type", "content", "sender", "token", "timestamp", "metadata"]
 }

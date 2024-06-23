@@ -39,7 +39,7 @@ class MessageValidator
             $errorMessage = '[JSON-SCHEMA] ';
             
             foreach ($validator->getErrors() as $error) {
-                $errorMessage .= $error['message'];
+                $errorMessage .= " | " . $error['message'];
             }
 
             throw new \Exception($errorMessage);
@@ -64,14 +64,6 @@ class MessageValidator
 
         if (isset($decodedData['content'])) {
             switch ($decodedData['type']) {
-                case 'auth':
-                    if (strlen($decodedData['content']) > 384) {
-                        throw new \Exception('Auth token is too long');
-                    }
-
-                    $safe_token = htmlspecialchars($decodedData['content'], ENT_QUOTES, 'UTF-8');
-                    $decodedData['content'] = $safe_token;
-                    break;
                 case 'message':
                     if (strlen($decodedData['content']) > 65535) {
                         throw new \Exception('Message content is too long');

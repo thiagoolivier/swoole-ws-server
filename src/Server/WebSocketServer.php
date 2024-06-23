@@ -6,6 +6,7 @@ use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
 use Src\Utils\Log;
 use Src\Utils\MessageValidator;
+use Src\Utils\TokenCache;
 use Swoole\Http\Request;
 use Swoole\WebSocket\Server;
 
@@ -14,12 +15,14 @@ class WebSocketServer
     private Server $server;
     private array $config;
     private MessageValidator $validator;
+    private TokenCache $tokenCache;
 
     public function __construct(string $host, int $port)
     {
         $this->server = new Server($host, $port);
         $this->setConfig();
         $this->validator = new MessageValidator();
+        $this->tokenCache = new TokenCache(300);
 
         $this->server->on('start', [$this, 'onStart']);
         $this->server->on('open', [$this, 'onOpen']);
@@ -90,6 +93,8 @@ class WebSocketServer
             $validatedData = $this->validator->validate($frame->data);
             $data = json_decode($validatedData, true);
 
+            $this->validateToken($data['token']);
+
             Log::info("Message received.", [
                 'type' => $data['type'],
                 'ip' => $senderData['remote_ip'],
@@ -151,8 +156,17 @@ class WebSocketServer
 
     private function validateToken(string $jwt): \stdClass
     {
-        $secret = $this->config['jwt_secret'];
+        $cachedToken = $this->tokenCache->get($jwt);
+        
+        if ($cachedToken !== null) {
+            return $cachedToken;
+        }
 
-        return JWT::decode($jwt, new Key($secret, 'HS256'));
+        $secret = $this->config['jwt_secret'];
+        $decodedToken = JWT::decode($jwt, new Key($secret, 'HS256'));
+        
+        $this->tokenCache->set($jwt, $decodedToken);
+
+        return $decodedToken;
     }
 }
