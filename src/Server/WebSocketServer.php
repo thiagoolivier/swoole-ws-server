@@ -16,6 +16,8 @@ class WebSocketServer
     private array $config;
     private MessageValidator $validator;
     private TokenCache $tokenCache;
+    private RoomManager $roomManager;
+    private array $fdToUserIdMap = [];
 
     public function __construct(string $host, int $port)
     {
@@ -23,6 +25,7 @@ class WebSocketServer
         $this->setConfig();
         $this->validator = new MessageValidator();
         $this->tokenCache = new TokenCache(300);
+        $this->roomManager = new RoomManager();
 
         $this->server->on('start', [$this, 'onStart']);
         $this->server->on('open', [$this, 'onOpen']);
@@ -42,8 +45,20 @@ class WebSocketServer
 
     public function onOpen (Server $server, Request $request) 
     {
+        $userId = $request->header['user-id'] ?? null;
         $appId = $request->header['app-id'] ?? null;
         $token = $request->header['token'] ?? null;
+
+        if (!isset($userId)) {
+            $server->disconnect($request->fd, 4000, 'Invalid user id!');
+
+            Log::info("Invalid user id.", [
+                'ip' => $request->server['remote_addr'],
+                'port' => $request->server['remote_port']
+            ]);
+
+            return;
+        }
 
         if (!isset($appId) || $appId !== $this->config['app_id']) {
             $server->disconnect($request->fd, 4000, 'Invalid app id!');
@@ -69,6 +84,7 @@ class WebSocketServer
 
         try {
             $this->validateToken($token);
+            $this->fdToUserIdMap[$request->fd] = $userId;
         } catch (\Throwable $e) {
             $server->disconnect($request->fd, 4002, 'Invalid token!');
 
@@ -101,10 +117,60 @@ class WebSocketServer
                 'port' => $senderData['remote_port']
             ]);
 
-            foreach ($server->connections as $fd) {
-                if ($server->isEstablished($fd) && $fd !== $frame->fd) {
-                    $server->push($fd, $validatedData);
-                }
+            $roomId = $data['metadata']['roomId'];
+            $userId = $this->fdToUserIdMap[$frame->fd];
+
+            switch ($data['type']) {
+                case 'join_room':
+                    $this->roomManager->joinRoom($roomId, $userId);
+                    
+                    $server->push(
+                        $frame->fd, 
+                        json_encode([
+                            'type' => 'joined_room', 
+                            'room_id' => $roomId
+                        ])
+                    );
+                    
+                    Log::info("User joined room.", [
+                        'room_id' => $roomId,
+                        'user_id' => $userId
+                    ]);
+
+                    break;
+                case 'leave_room':
+                    $this->roomManager->leaveRoom($roomId, $userId);
+                    
+                    $server->push(
+                        $frame->fd,
+                        json_encode([
+                            'type' => 'left_room',
+                            'room_id' => $roomId
+                        ])
+                    );
+
+                    Log::info("User left room.", [
+                        'room_id' => $roomId,
+                        'user_id' => $userId
+                    ]);
+
+                    break;
+                case "message":
+                case "image":                   
+                case "document":
+                case "notification":
+                    if (!$this->roomManager->isUserInRoom($roomId, $userId)) {
+                        throw new \RuntimeException("User not in room!");
+                    }
+
+                    $this->sendMessage(
+                        $roomId,
+                        $userId,
+                        $data['content']
+                    );
+                    break;
+                default:
+                    throw new \RuntimeException("Invalid message type!");
             }
         } catch (\Throwable $e) {
             Log::error($e->getMessage(), [
@@ -115,12 +181,16 @@ class WebSocketServer
             ]);
 
             $server->push($frame->fd, json_encode(['error' => $e->getMessage()]));
-            return;
         }
     }
 
     public function onClose(Server $server, int $fd): void
     {
+        $userId = $this->fdToUserIdMap[$fd] ?? null;
+        if ($userId) {
+            unset($this->fdToUserIdMap[$fd]);
+        }
+
         $senderData = $server->connection_info($fd);
         Log::info("Connection closed.", [
             'ip' => $senderData['remote_ip'],
@@ -168,5 +238,26 @@ class WebSocketServer
         $this->tokenCache->set($jwt, $decodedToken);
 
         return $decodedToken;
+    }
+
+    private function sendMessage(string $roomId, string $senderUserId, string $message): void
+    {
+        $participants = $this->roomManager->getRoomParticipants($roomId);
+        
+        if (empty($participants)) return;
+
+        foreach ($participants as $userId => $active) {
+            if ($userId == $senderUserId) continue;
+
+            $fd = array_search($userId, $this->fdToUserIdMap);
+            
+            if ($fd && $this->server->isEstablished($fd)) {
+                $this->server->push($fd, json_encode([
+                    'user_id' => $senderUserId,
+                    'type' => 'message', 
+                    'content' => $message
+                ]));
+            }
+        }
     }
 }

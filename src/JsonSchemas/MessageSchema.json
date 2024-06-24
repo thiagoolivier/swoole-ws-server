@@ -4,7 +4,7 @@
   "properties": {
     "type": {
       "type": "string",
-      "enum": ["message", "image", "document", "notification"]
+      "enum": ["join_room", "leave_room", "message", "image", "document", "notification"]
     },
     "content": {
       "type": "string"
@@ -13,7 +13,7 @@
       "type": "object",
       "properties": {
         "id": {
-          "type": "string"
+          "type": "number"
         },
         "name": {
           "type": "string"
@@ -32,7 +32,7 @@
       "type": "object",
       "properties": {
         "messageId": {
-          "type": "string"
+          "type": "number"
         },
         "roomId": {
           "type": "string"

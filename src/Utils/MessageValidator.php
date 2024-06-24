@@ -64,6 +64,22 @@ class MessageValidator
 
         if (isset($decodedData['content'])) {
             switch ($decodedData['type']) {
+                case 'join_room':
+                    if (strlen($decodedData['content']) > 25) {
+                        throw new \Exception('Notification content is too long. Max length is 512 characters.');
+                    }
+
+                    $safe_notification = htmlspecialchars($decodedData['content'], ENT_QUOTES, 'UTF-8');
+                    $decodedData['content'] = $safe_notification;
+                    break;
+                case 'leave_room':
+                    if (strlen($decodedData['content']) > 25) {
+                        throw new \Exception('Notification content is too long. Max length is 512 characters.');
+                    }
+
+                    $safe_notification = htmlspecialchars($decodedData['content'], ENT_QUOTES, 'UTF-8');
+                    $decodedData['content'] = $safe_notification;
+                    break;
                 case 'message':
                     if (strlen($decodedData['content']) > 65535) {
                         throw new \Exception('Message content is too long');
